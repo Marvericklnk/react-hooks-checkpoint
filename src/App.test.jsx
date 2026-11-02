@@ -1,0 +1,50 @@
+import React from 'react';
+import { afterEach, expect, test } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import App from './App.jsx';
+afterEach(cleanup);
+test('title search is case insensitive and combines with minimum rating', async () => {
+ const user=userEvent.setup();render(<App/>);
+ expect(screen.getAllByRole('article')).toHaveLength(3);
+ await user.type(screen.getByLabelText('Search by title'),'BLACK');
+ expect(screen.getAllByRole('article')).toHaveLength(1);
+ await user.selectOptions(screen.getByLabelText('Minimum rating'),'8');
+ expect(screen.queryAllByRole('article')).toHaveLength(0);
+ expect(screen.getByText(/No movies match/)).toBeTruthy();
+ await user.click(screen.getByRole('button',{name:'Clear filters'}));
+ expect(screen.getAllByRole('article')).toHaveLength(3);
+});
+test('valid movie is added with its description and rating, even with active filters', async () => {
+ const user=userEvent.setup();render(<App/>);
+ await user.type(screen.getByLabelText('Search by title'),'nothing');
+ await user.type(screen.getByLabelText('Movie title'),'My Movie');
+ await user.type(screen.getByLabelText('Description'),'A journey home.');
+ await user.type(screen.getByLabelText('Poster URL'),'https://example.com/poster.jpg');
+ await user.type(screen.getByLabelText('Rating (0–10)'),'8.5');
+ await user.click(screen.getByRole('button',{name:'Add movie +'}));
+ expect(screen.getAllByRole('article')).toHaveLength(4);
+ expect(screen.getByRole('heading',{name:'My Movie'})).toBeTruthy();
+ expect(screen.getByText('A journey home.')).toBeTruthy();
+ expect(screen.getByText('★ 8.5 / 10')).toBeTruthy();
+ expect(screen.getByLabelText('Movie title').value).toBe('');
+});
+test('rejects blank fields, invalid ratings and unsafe poster URLs', async () => {
+ const user=userEvent.setup();render(<App/>);
+ await user.click(screen.getByRole('button',{name:'Add movie +'}));
+ expect(screen.getByRole('alert').textContent).toMatch(/complete every field/);
+ fireEvent.change(screen.getByLabelText('Movie title'),{target:{value:'Test'}});
+ fireEvent.change(screen.getByLabelText('Description'),{target:{value:'Test description'}});
+ fireEvent.change(screen.getByLabelText('Poster URL'),{target:{value:'javascript:alert(1)'}});
+ fireEvent.change(screen.getByLabelText('Rating (0–10)'),{target:{value:'11'}});
+ await user.click(screen.getByRole('button',{name:'Add movie +'}));
+ expect(screen.getByRole('alert').textContent).toMatch(/between 0 and 10/);
+ fireEvent.change(screen.getByLabelText('Rating (0–10)'),{target:{value:'0'}});
+ await user.click(screen.getByRole('button',{name:'Add movie +'}));
+ expect(screen.getByRole('alert').textContent).toMatch(/valid http or https/);
+ expect(screen.getAllByRole('article')).toHaveLength(3);
+});
+test('a failed poster displays a fallback', () => {
+ render(<App/>);fireEvent.error(screen.getByAltText('Interstellar poster'));
+ expect(screen.getByText('Poster unavailable')).toBeTruthy();
+});
